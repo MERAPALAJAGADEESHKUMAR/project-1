@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>DO OR DIE</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; font-family: 'Arial Black', Arial, sans-serif; }
+    #gameCanvas { display: block; width: 100vw; height: 100vh; }
+
+    /* ─── MENUS ─── */
+    #mainMenu {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a0a2e 50%, #0d1b2a 100%);
+      z-index: 100;
+    }
+    #mainMenu .logo {
+      font-size: 80px; font-weight: 900; letter-spacing: 8px;
+      color: #fff; text-shadow: 0 0 40px #ff4400, 0 0 80px #ff2200, 4px 4px 0 #aa0000;
+      animation: pulse 2s ease-in-out infinite; margin-bottom: 10px;
+    }
+    #mainMenu .tagline {
+      font-size: 18px; color: #ff8844; letter-spacing: 4px; margin-bottom: 60px;
+      text-transform: uppercase;
+    }
+    @keyframes pulse {
+      0%,100% { text-shadow: 0 0 40px #ff4400, 0 0 80px #ff2200, 4px 4px 0 #aa0000; }
+      50%      { text-shadow: 0 0 60px #ff6600, 0 0 120px #ff4400, 4px 4px 0 #cc2200; }
+    }
+    .menuBtn {
+      width: 240px; padding: 16px 0; margin: 10px; border: 2px solid #ff4400;
+      background: rgba(255,68,0,0.1); color: #fff; font-size: 20px; font-weight: 700;
+      letter-spacing: 3px; cursor: pointer; border-radius: 4px; text-transform: uppercase;
+      transition: all .2s; backdrop-filter: blur(4px);
+    }
+    .menuBtn:hover { background: #ff4400; transform: scale(1.05); box-shadow: 0 0 20px #ff4400; }
+    .menuBtn.secondary { border-color: #666; background: rgba(100,100,100,0.1); font-size: 16px; }
+    .menuBtn.secondary:hover { background: #444; box-shadow: 0 0 10px #666; }
+
+    /* ─── SETTINGS ─── */
+    #settingsMenu {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.9); z-index: 101;
+    }
+    #settingsMenu h2 { color: #ff4400; font-size: 36px; margin-bottom: 30px; letter-spacing: 4px; }
+    .settingRow { display: flex; align-items: center; justify-content: space-between;
+      width: 400px; margin: 10px 0; color: #fff; font-size: 16px; }
+    .settingRow input[type=range] { width: 180px; accent-color: #ff4400; }
+    .settingRow select { background: #222; color: #fff; border: 1px solid #ff4400;
+      padding: 4px 8px; border-radius: 3px; }
+
+    /* ─── PARACHUTE SCREEN ─── */
+    #parachuteScreen {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: flex-start; padding-top: 40px;
+      pointer-events: none; z-index: 50;
+    }
+    #parachuteScreen .instruction {
+      color: #fff; font-size: 22px; font-weight: 700; letter-spacing: 2px;
+      background: rgba(0,0,0,0.6); padding: 10px 24px; border-radius: 6px;
+      text-shadow: 2px 2px 4px #000; border: 1px solid rgba(255,255,255,0.2);
+    }
+    #parachuteScreen .instruction span { color: #ffdd00; }
+    #altitudeBar {
+      margin-top: 16px; width: 300px; height: 12px;
+      background: rgba(0,0,0,0.5); border-radius: 6px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
+    #altitudeFill { height: 100%; background: linear-gradient(90deg,#ff4400,#ffdd00); width: 100%;
+      transition: width .05s linear; border-radius: 6px; }
+
+    /* ─── HUD ─── */
+    #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
+
+    /* Health / Armor */
+    #statusBars {
+      position: absolute; bottom: 24px; left: 24px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .barLabel { color: #bbb; font-size: 11px; letter-spacing: 1px; margin-bottom: 2px; }
+    .bar { width: 220px; height: 14px; background: rgba(0,0,0,0.5);
+      border-radius: 7px; overflow: hidden; border: 1px solid rgba(255,255,255,0.15); }
+    .barFill { height: 100%; border-radius: 7px; transition: width .15s; }
+    #healthFill { background: linear-gradient(90deg, #22cc44, #44ff66); }
+    #armorFill  { background: linear-gradient(90deg, #2244cc, #4488ff); }
+    .barText { position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      color: #fff; font-size: 11px; font-weight: 700; }
+
+    /* Ammo */
+    #ammoDisplay {
+      position: absolute; bottom: 24px; right: 180px;
+      text-align: right;
+    }
+    #ammoDisplay .ammoCount {
+      color: #fff; font-size: 42px; font-weight: 900;
+      text-shadow: 2px 2px 6px #000; line-height: 1;
+    }
+    #ammoDisplay .ammoReserve { color: #aaa; font-size: 20px; }
+    #ammoDisplay .weaponName { color: #ffdd00; font-size: 14px; letter-spacing: 2px;
+      text-transform: uppercase; margin-top: 4px; }
+
+    /* Weapon slots */
+    #weaponSlots {
+      position: absolute; bottom: 24px; right: 24px;
+      display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+    }
+    .weaponSlot {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
+      padding: 6px 10px; border-radius: 4px; min-width: 120px;
+      transition: all .15s;
+    }
+    .weaponSlot.active { border-color: #ffdd00; background: rgba(255,221,0,0.1); }
+    .weaponSlot .slotNum { color: #888; font-size: 11px; min-width: 12px; }
+    .weaponSlot.active .slotNum { color: #ffdd00; }
+    .weaponSlot .slotName { color: #fff; font-size: 13px; font-weight: 700; flex: 1; }
+    .weaponSlot:empty-slot .slotName { color: #444; }
+
+    /* Crosshair */
+    #crosshair {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      pointer-events: none;
+    }
+    #crosshair svg { opacity: 0.9; }
+
+    /* Kill feed */
+    #killFeed {
+      position: absolute; top: 80px; right: 16px;
+      display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+    }
+    .killEntry {
+      background: rgba(0,0,0,0.65); border-left: 3px solid #ff4400;
+      padding: 5px 10px; border-radius: 2px; color: #fff; font-size: 13px;
+      animation: fadeIn .2s ease; white-space: nowrap;
+    }
+    .killEntry .killer { color: #ffdd00; }
+    .killEntry .victim { color: #ff6644; }
+    .killEntry .weapon { color: #aaa; font-size: 11px; }
+    @keyframes fadeIn { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
+
+    /* Stats bar (top) */
+    #topStats {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 0; background: rgba(0,0,0,0.5);
+      border-radius: 0 0 8px 8px; overflow: hidden;
+    }
+    .statChip {
+      padding: 8px 20px; display: flex; flex-direction: column; align-items: center;
+      border-right: 1px solid rgba(255,255,255,0.1);
+    }
+    .statChip:last-child { border-right: none; }
+    .statChip .val { color: #fff; font-size: 22px; font-weight: 900; line-height: 1; }
+    .statChip .lbl { color: #aaa; font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+    #zoneTimerDisplay .val { color: #4af; }
+    #killsDisplay .val { color: #fa4; }
+    #aliveDisplay .val { color: #4f4; }
+
+    /* Zone warning */
+    #zoneWarning {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: #ff4400; font-size: 28px; font-weight: 900; letter-spacing: 3px;
+      text-shadow: 2px 2px 8px #000; pointer-events: none;
+      display: none; animation: warnBlink 0.5s ease-in-out infinite;
+    }
+    @keyframes warnBlink { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+    /* Minimap */
+    #minimap {
+      position: absolute; bottom: 24px; right: 24px;
+      display: none; /* shown via code */
+    }
+    #minimapCanvas {
+      width: 180px; height: 180px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      box-shadow: 0 0 10px rgba(0,0,0,0.6);
+    }
+
+    /* Reload indicator */
+    #reloadIndicator {
+      position: absolute; bottom: 180px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); color: #ffdd00; font-size: 14px; font-weight: 700;
+      padding: 6px 20px; border-radius: 20px; display: none; letter-spacing: 2px;
+    }
+
+    /* Hit marker */
+    #hitMarker {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      pointer-events: none; display: none;
+    }
+
+    /* Damage numbers pool */
+    .dmgNum {
+      position: absolute; color: #ff4; font-size: 20px; font-weight: 900;
+      text-shadow: 2px 2px 4px #000; pointer-events: none;
+      animation: dmgFloat 0.8s ease-out forwards;
+    }
+    @keyframes dmgFloat {
+      0% { opacity:1; transform: translateY(0); }
+      100% { opacity:0; transform: translateY(-50px); }
+    }
+
+    /* Interaction prompt */
+    #interactPrompt {
+      position: absolute; bottom: 200px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.75); color: #fff; padding: 8px 20px;
+      border-radius: 20px; font-size: 14px; display: none; border: 1px solid #ffdd00;
+      letter-spacing: 1px;
+    }
+    #interactPrompt kbd { background: #ffdd00; color: #000; border-radius: 3px; padding: 1px 6px; font-weight: 900; }
+
+    /* Zone edge vignette */
+    #zoneVignette {
+      position: fixed; inset: 0; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,100,255,0.4) 100%);
+      display: none; z-index: 5;
+    }
+
+    /* ─── GAME OVER / WIN ─── */
+    #gameOverScreen, #winScreen {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.85); z-index: 200; backdrop-filter: blur(4px);
+    }
+    #gameOverScreen h1 { font-size: 72px; color: #ff2222; text-shadow: 0 0 30px #ff0000;
+      letter-spacing: 6px; margin-bottom: 10px; }
+    #winScreen h1 { font-size: 56px; color: #ffdd00; text-shadow: 0 0 30px #ffaa00;
+      letter-spacing: 4px; margin-bottom: 10px; text-align: center; }
+    .endStats { display: flex; gap: 40px; margin: 30px 0; }
+    .endStat { text-align: center; }
+    .endStat .val { color: #fff; font-size: 48px; font-weight: 900; }
+    .endStat .lbl { color: #aaa; font-size: 14px; letter-spacing: 2px; }
+
+    /* Mobile controls */
+    #mobileControls {
+      position: fixed; inset: 0; pointer-events: none; z-index: 20; display: none;
+    }
+    #joystickZone {
+      position: absolute; bottom: 40px; left: 40px;
+      width: 120px; height: 120px; border-radius: 50%;
+      background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3);
+      pointer-events: all;
+    }
+    #joystickKnob {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(255,255,255,0.4);
+    }
+    .mobileBtn {
+      position: absolute; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: #fff;
+      border: 2px solid rgba(255,255,255,0.4);
+      background: rgba(0,0,0,0.4); pointer-events: all;
+      user-select: none; -webkit-user-select: none;
+    }
+    #btnFire   { bottom: 100px; right: 40px;  width: 80px; height: 80px;
+      background: rgba(220,50,50,0.5); border-color: #f55; font-size: 11px; }
+    #btnJump   { bottom: 180px; right: 130px; width: 60px; height: 60px; }
+    #btnReload { bottom: 100px; right: 130px; width: 60px; height: 60px; font-size: 11px; }
+    #btnCrouch { bottom: 180px; right: 40px;  width: 60px; height: 60px; font-size: 11px; }
+
+    /* Loading screen */
+    #loadingScreen {
+      position: fixed; inset: 0; background: #000; display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999;
+    }
+    #loadingScreen .logo { font-size: 60px; font-weight: 900; color: #ff4400;
+      letter-spacing: 6px; margin-bottom: 30px; }
+    #loadingBar { width: 300px; height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
+    #loadingFill { height: 100%; background: linear-gradient(90deg,#ff4400,#ffdd00);
+      width: 0%; transition: width .1s; border-radius: 3px; }
+    #loadingText { color: #666; font-size: 13px; margin-top: 12px; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loadingScreen">
+  <div class="logo">DO OR DIE</div>
+  <div id="loadingBar"><div id="loadingFill"></div></div>
+  <div id="loadingText">INITIALIZING...</div>
+</div>
+
+<!-- Canvas -->
+<canvas id="gameCanvas"></canvas>
+
+<!-- Main Menu -->
+<div id="mainMenu">
+  <div class="logo">DO OR DIE</div>
+  <div class="tagline">1 vs 24 · Last One Standing</div>
+  <button class="menuBtn" id="btnPlay">▶ &nbsp; PLAY</button>
+  <button class="menuBtn secondary" id="btnSettings">⚙ &nbsp; SETTINGS</button>
+</div>
+
+<!-- Settings -->
+<div id="settingsMenu">
+  <h2>SETTINGS</h2>
+  <div class="settingRow">
+    <span>Music Volume</span>
+    <input type="range" id="settingMusic" min="0" max="100" value="40">
+  </div>
+  <div class="settingRow">
+    <span>SFX Volume</span>
+    <input type="range" id="settingSFX" min="0" max="100" value="80">
+  </div>
+  <div class="settingRow">
+    <span>Mouse Sensitivity</span>
+    <input type="range" id="settingSens" min="1" max="10" value="5">
+  </div>
+  <div class="settingRow">
+    <span>Graphics</span>
+    <select id="settingGfx">
+      <option value="low">Low</option>
+      <option value="medium" selected>Medium</option>
+      <option value="high">High</option>
+    </select>
+  </div>
+  <button class="menuBtn secondary" id="btnSettingsBack" style="margin-top:30px">← BACK</button>
+</div>
+
+<!-- Parachute Screen -->
+<div id="parachuteScreen">
+  <div class="instruction">🪂 &nbsp; <span>SPACE</span> to deploy / dive &nbsp;|&nbsp; Mouse to steer &nbsp;|&nbsp; <span>F</span> to land</div>
+  <div id="altitudeBar"><div id="altitudeFill"></div></div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <!-- Top stats -->
+  <div id="topStats">
+    <div class="statChip" id="zoneTimerDisplay">
+      <span class="val" id="zoneTimerVal">3:00</span>
+      <span class="lbl">Zone</span>
+    </div>
+    <div class="statChip" id="killsDisplay">
+      <span class="val" id="killsVal">0</span>
+      <span class="lbl">Kills</span>
+    </div>
+    <div class="statChip" id="aliveDisplay">
+      <span class="val" id="aliveVal">25</span>
+      <span class="lbl">Alive</span>
+    </div>
+  </div>
+
+  <!-- Kill feed -->
+  <div id="killFeed"></div>
+
+  <!-- Status bars -->
+  <div id="statusBars">
+    <div class="barLabel">❤ HEALTH</div>
+    <div class="bar" style="position:relative">
+      <div class="barFill" id="healthFill" style="width:100%"></div>
+      <span class="barText" id="healthText">100</span>
+    </div>
+    <div class="barLabel">🛡 ARMOR</div>
+    <div class="bar" style="position:relative">
+      <div class="barFill" id="armorFill" style="width:0%"></div>
+      <span class="barText" id="armorText">0</span>
+    </div>
+  </div>
+
+  <!-- Ammo display -->
+  <div id="ammoDisplay">
+    <div class="ammoCount"><span id="currentAmmo">30</span></div>
+    <div class="ammoReserve">/ <span id="reserveAmmo">90</span></div>
+    <div class="weaponName" id="weaponNameDisplay">ASSAULT RIFLE</div>
+  </div>
+
+  <!-- Weapon slots -->
+  <div id="weaponSlots">
+    <div class="weaponSlot" id="slot1"><span class="slotNum">1</span><span class="slotName">-</span></div>
+    <div class="weaponSlot" id="slot2"><span class="slotNum">2</span><span class="slotName">-</span></div>
+    <div class="weaponSlot" id="slot3"><span class="slotNum">3</span><span class="slotName">-</span></div>
+  </div>
+
+  <!-- Crosshair -->
+  <div id="crosshair">
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <line x1="20" y1="4" x2="20" y2="14" stroke="white" stroke-width="2" opacity="0.9"/>
+      <line x1="20" y1="26" x2="20" y2="36" stroke="white" stroke-width="2" opacity="0.9"/>
+      <line x1="4" y1="20" x2="14" y2="20" stroke="white" stroke-width="2" opacity="0.9"/>
+      <line x1="26" y1="20" x2="36" y2="20" stroke="white" stroke-width="2" opacity="0.9"/>
+      <circle cx="20" cy="20" r="2" fill="white" opacity="0.9"/>
+    </svg>
+  </div>
+
+  <!-- Hit marker -->
+  <div id="hitMarker">
+    <svg width="40" height="40" viewBox="0 0 40 40">
+      <line x1="12" y1="12" x2="18" y2="18" stroke="#ff4400" stroke-width="2.5"/>
+      <line x1="28" y1="12" x2="22" y2="18" stroke="#ff4400" stroke-width="2.5"/>
+      <line x1="12" y1="28" x2="18" y2="22" stroke="#ff4400" stroke-width="2.5"/>
+      <line x1="28" y1="28" x2="22" y2="22" stroke="#ff4400" stroke-width="2.5"/>
+    </svg>
+  </div>
+
+  <!-- Reload indicator -->
+  <div id="reloadIndicator">🔄 RELOADING...</div>
+
+  <!-- Zone warning -->
+  <div id="zoneWarning">⚠ OUTSIDE SAFE ZONE — TAKE DAMAGE</div>
+
+  <!-- Interact prompt -->
+  <div id="interactPrompt"><kbd>E</kbd> Pick Up <span id="interactItemName">Item</span></div>
+
+  <!-- Minimap -->
+  <div id="minimap">
+    <canvas id="minimapCanvas" width="180" height="180"></canvas>
+  </div>
+</div>
+
+<!-- Zone vignette -->
+<div id="zoneVignette"></div>
+
+<!-- Game Over -->
+<div id="gameOverScreen">
+  <h1>YOU DIED</h1>
+  <p style="color:#888;letter-spacing:2px;font-size:14px">BETTER LUCK NEXT TIME</p>
+  <div class="endStats">
+    <div class="endStat">
+      <div class="val" id="goRank">#12</div>
+      <div class="lbl">RANK</div>
+    </div>
+    <div class="endStat">
+      <div class="val" id="goKills">3</div>
+      <div class="lbl">KILLS</div>
+    </div>
+    <div class="endStat">
+      <div class="val" id="goTime">4:32</div>
+      <div class="lbl">SURVIVED</div>
+    </div>
+  </div>
+  <button class="menuBtn" id="btnPlayAgain">▶ PLAY AGAIN</button>
+  <button class="menuBtn secondary" id="btnGoMenu">MAIN MENU</button>
+</div>
+
+<!-- Win Screen -->
+<div id="winScreen">
+  <h1>🏆 WINNER WINNER<br>YOU DID IT!</h1>
+  <div class="endStats">
+    <div class="endStat">
+      <div class="val">#1</div>
+      <div class="lbl">RANK</div>
+    </div>
+    <div class="endStat">
+      <div class="val" id="winKills">0</div>
+      <div class="lbl">KILLS</div>
+    </div>
+    <div class="endStat">
+      <div class="val" id="winTime">-</div>
+      <div class="lbl">TIME</div>
+    </div>
+  </div>
+  <button class="menuBtn" id="btnWinPlay">▶ PLAY AGAIN</button>
+  <button class="menuBtn secondary" id="btnWinMenu">MAIN MENU</button>
+</div>
+
+<!-- Mobile Controls -->
+<div id="mobileControls">
+  <div id="joystickZone"><div id="joystickKnob"></div></div>
+  <div class="mobileBtn" id="btnFire">FIRE</div>
+  <div class="mobileBtn" id="btnJump">JUMP</div>
+  <div class="mobileBtn" id="btnReload">RELOAD</div>
+  <div class="mobileBtn" id="btnCrouch">CROUCH</div>
+</div>
+
+<!-- Three.js CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<!-- Game modules (order matters) -->
+<script src="src/constants.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/map.js"></script>
+<script src="src/weapons.js"></script>
+<script src="src/loot.js"></script>
+<script src="src/zone.js"></script>
+<script src="src/player.js"></script>
+<script src="src/bots.js"></script>
+<script src="src/ui.js"></script>
+<script src="src/mobile.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
