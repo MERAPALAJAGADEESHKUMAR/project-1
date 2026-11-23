@@ -172,11 +172,14 @@ const Player = (() => {
 
   // ── Input ──────────────────────────────────────────────────────
   const keys = {};
+  let inputSetup = false;
   let mouseButtons = { left:false, right:false };
   let mouseDX = 0, mouseDY = 0;
   let sensitivity = 0.002;
 
   function setupInput() {
+    if(inputSetup) return; // listeners persist across matches – attach only once
+    inputSetup = true;
     document.addEventListener('keydown', e => {
       keys[e.code] = true;
       if(e.code==='KeyR') tryReload();
@@ -592,9 +595,32 @@ const Player = (() => {
     alive = true;
     isParachuting = false;
     hasLanded = false;
+    paraLanded = false;
+    paraOpen = false;
+    planeMesh = null;
+    paraMesh = null;
+    onGround = false;
+    isCrouching = false;
+    isSprinting = false;
+    isAiming = false;
+    currentHeight = C.PLAYER_HEIGHT;
+    yaw = 0;
+    pitch = 0;
+    stepTimer = 0;
+    zoneDamageTimer = 0;
+    mouseButtons.left = false;
+    mouseButtons.right = false;
+    mouseDX = 0;
+    mouseDY = 0;
+    for(const k in keys) delete keys[k];
+
+    if(weaponViewMesh) { camera.remove(weaponViewMesh); weaponViewMesh = null; }
+    weaponMesh = null;
     vel.set(0,0,0);
     inventory[0]=null; inventory[1]=null; inventory[2]=null;
-    fireCooldown=0; reloading=false;
+    for(const k in ammo) delete ammo[k];
+    fireCooldown=0; reloading=false; reloadTimer=0;
+
     buildMesh(scn);
     setupInput();
     scn.add(camera);
@@ -617,6 +643,7 @@ const Player = (() => {
 
   return {
     init, update, getPosition, getCamera, isAlive, getKills,
+    getActiveAmmo, getActiveWeapon, getInventory: () => inventory.slice(), getActiveSlot: () => activeSlot,
     setSensitivity, startParachute, land,
     mobileMove, mobileShoot, mobileJump, mobileReload, mobileCrouch, mobileLook,
     get health() { return health; },

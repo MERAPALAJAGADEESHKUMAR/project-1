@@ -58,6 +58,7 @@ const Weapons = (() => {
   let tracerScene = null;
 
   function initTracers(scene) {
+    tracers.length = 0; // clear stale pool from a previous match
     tracerScene = scene;
     for(let i=0;i<MAX_TRACERS;i++){
       const geo = new THREE.BufferGeometry();
@@ -182,5 +183,15 @@ const Weapons = (() => {
     return results;
   }
 
-  return { buildWeaponMesh, initTracers, spawnTracer, updateTracers, spawnHitEffect, updateHitParticles, shoot };
+  function reset() {
+    if(tracerScene) {
+      tracers.forEach(t => tracerScene.remove(t));
+      hitParticles.forEach(p => tracerScene.remove(p));
+    }
+    tracers.length = 0;
+    hitParticles.length = 0;
+    tracerScene = null;
+  }
+
+  return { buildWeaponMesh, initTracers, spawnTracer, updateTracers, spawnHitEffect, updateHitParticles, shoot, reset };
 })();

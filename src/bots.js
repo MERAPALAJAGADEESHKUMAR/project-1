@@ -298,28 +298,61 @@ const Bots = (() => {
     this.pos.z += vel.z*dt;
   };
 
-  // ── Spawn all bots (async, 5 per frame so browser stays responsive) ──────
+  // ── Yield helper: rAF for smooth frames, timer as a safety net ──────────
+  // A backgrounded/throttled tab can stop firing rAF entirely. Without the
+  // timer fallback the async spawn promise would never resolve and the
+  // loading screen would be stuck on "SPAWNING BOTS..." forever.
+  function yieldToBrowser() {
+    return new Promise(resolve => {
+      let done = false;
+      let timer = null;
+      const finish = () => {
+        if(done) return;
+        done = true;
+        if(timer !== null) clearTimeout(timer);
+        resolve();
+      };
+      timer = setTimeout(finish, 100);
+      if(typeof requestAnimationFrame === 'function') requestAnimationFrame(finish);
+      else finish();
+    });
+  }
+
+  // ── Spawn all bots in small batches so the browser never locks up ───────
   async function spawnAll(scn, onProgress) {
     scene = scn;
     const BATCH = 5;
-    for(let i = 0; i < C.BOT_COUNT; i++) {
-      try {
-        const color = BOT_COLORS[i % BOT_COLORS.length];
-        const diff  = 0.3 + Math.random() * 0.65;
-        const bot   = new Bot(BOT_NAMES[i], color, diff);
-        scn.add(bot.mesh);
-        bots.push(bot);
-      } catch(e) {
-        console.error('[Bots] Failed to spawn bot', i, e);
+    const total = C.BOT_COUNT;
+    let spawned = 0;
+
+    try {
+      for(let i = 0; i < total; i++) {
+        try {
+          const color = BOT_COLORS[i % BOT_COLORS.length];
+          const diff  = 0.3 + Math.random() * 0.65;
+          const bot   = new Bot(BOT_NAMES[i % BOT_NAMES.length], color, diff);
+          scn.add(bot.mesh);
+          bots.push(bot);
+          spawned++;
+        } catch(e) {
+          console.error(`[Bots] Failed to spawn bot ${i + 1}/${total}:`, e);
+        }
+
+        // Report and yield after every batch (and once after the final bot).
+        if((i + 1) % BATCH === 0 || i === total - 1) {
+          if(onProgress) {
+            try { onProgress(spawned, total); }
+            catch(e) { console.warn('[Bots] Progress callback failed:', e); }
+          }
+          await yieldToBrowser();
+        }
       }
-      // Yield to the browser every BATCH bots
-      if((i + 1) % BATCH === 0) {
-        if(onProgress) onProgress(i + 1, C.BOT_COUNT);
-        await new Promise(r => requestAnimationFrame(r));
-      }
+      console.log(`[Bots] Spawned ${spawned}/${total}`);
+      return spawned;
+    } catch(e) {
+      console.error('[Bots] spawnAll failed:', e);
+      throw e; // let main.js log which loading step failed
     }
-    if(onProgress) onProgress(C.BOT_COUNT, C.BOT_COUNT);
-    console.log('[Bots] Spawned', bots.length, '/', C.BOT_COUNT);
   }
 
   // ── Update all ────────────────────────────────────────────────

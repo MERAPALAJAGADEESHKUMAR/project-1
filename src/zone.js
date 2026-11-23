@@ -116,5 +116,18 @@ const Zone = (() => {
   function getCenter() { return {x:centerX, z:centerZ}; }
   function getRadius() { return currentRadius; }
 
-  return { init, update, isOutside, getDamage, getTimerText, getPhaseText, getCenter, getRadius };
+  function reset() {
+    stage = 0;
+    phase = 'waiting';
+    timer = 0;
+    currentRadius = stages[0].startR;
+    targetRadius = stages[0].startR;
+    centerX = 0;
+    centerZ = 0;
+    zoneCircleMesh = null;
+    zoneBorderMesh = null;
+    scene = null;
+  }
+
+  return { init, update, isOutside, getDamage, getTimerText, getPhaseText, getCenter, getRadius, reset };
 })();

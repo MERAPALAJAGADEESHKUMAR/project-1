@@ -22,6 +22,10 @@ const UI = (() => {
   // Minimap canvas
   let mmCtx = null;
   const MM = C.MINIMAP_SIZE;
+  let matchStartTime = 0;
+
+  function setMatchStartTime(t) { matchStartTime = t; }
+  function getElapsedTime() { return Math.max(0, performance.now() - matchStartTime); }
 
   function initMinimap() {
     const canvas = document.getElementById('minimapCanvas');
@@ -204,8 +208,9 @@ const UI = (() => {
     document.getElementById('hud').style.display='none';
     const alive = Bots.getAliveCount();
     const rank = alive + 1;
-    const mins = Math.floor(performance.now()/60000);
-    const secs = Math.floor((performance.now()%60000)/1000);
+    const elapsed = getElapsedTime();
+    const mins = Math.floor(elapsed/60000);
+    const secs = Math.floor((elapsed%60000)/1000);
     document.getElementById('goRank').textContent   = '#'+rank;
     document.getElementById('goKills').textContent  = kills;
     document.getElementById('goTime').textContent   = `${mins}:${String(secs).padStart(2,'0')}`;
@@ -214,11 +219,17 @@ const UI = (() => {
 
   function showWinScreen(kills) {
     document.getElementById('hud').style.display='none';
-    const mins = Math.floor(performance.now()/60000);
-    const secs = Math.floor((performance.now()%60000)/1000);
+    const elapsed = getElapsedTime();
+    const mins = Math.floor(elapsed/60000);
+    const secs = Math.floor((elapsed%60000)/1000);
     document.getElementById('winKills').textContent = kills;
     document.getElementById('winTime').textContent  = `${mins}:${String(secs).padStart(2,'0')}`;
     document.getElementById('winScreen').style.display='flex';
+  }
+
+  function clearKillFeed() {
+    killEntries.length = 0;
+    killFeed().innerHTML = '';
   }
 
   function showHUD() {
@@ -236,5 +247,6 @@ const UI = (() => {
     updateStatusBars, updateAmmo, updateKills, updateAlive, updateZoneTimer,
     updateWeaponSlots, addKillFeed, showHitMarker, flashDamage, showDamageNumber,
     showReloadIndicator, showPickupMsg, drawMinimap, showGameOver, showWinScreen, showHUD,
+    setMatchStartTime, clearKillFeed,
   };
 })();

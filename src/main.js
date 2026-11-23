@@ -5,8 +5,19 @@
 
 // ── Loading progress helper ───────────────────
 function setLoading(pct, msg) {
-  document.getElementById('loadingFill').style.width = pct+'%';
-  document.getElementById('loadingText').textContent = msg;
+  const fill = document.getElementById('loadingFill');
+  const text = document.getElementById('loadingText');
+  if(fill) fill.style.width = pct + '%';
+  if(text) text.textContent = msg;
+}
+
+function refreshHud() {
+  UI.updateStatusBars(Player.health, Player.armor);
+  UI.updateAmmo(Player.getActiveAmmo(), Player.getActiveWeapon());
+  UI.updateWeaponSlots(Player.getInventory(), Player.getActiveSlot());
+  UI.updateKills(Player.getKills());
+  UI.updateAlive(Bots.getAll().length + 1);
+  UI.clearKillFeed();
 }
 
 // ── Three.js scene ────────────────────────────
@@ -95,13 +106,22 @@ function gameLoop() {
   const playerPos = Player.getPosition();
   const playerAlive = Player.isAlive();
 
+  // Player.die() already showed the game-over screen – stop the loop here.
+  // Release pointer lock so the player can actually click the menu buttons.
+  if(!playerAlive) {
+    gameRunning = false;
+    if(document.exitPointerLock) document.exitPointerLock();
+    return;
+  }
+
   Player.update(dt, Bots.getAliveBots());
   Bots.update(dt, playerPos, playerAlive);
 
-  // Check win condition
+  // Check win condition (never award a win when bot spawning yielded nobody)
   const aliveBots = Bots.getAliveCount();
-  if(aliveBots === 0 && playerAlive) {
+  if(aliveBots === 0 && Bots.getAll().length > 0 && playerAlive) {
     gameRunning = false;
+    if(document.exitPointerLock) document.exitPointerLock();
     UI.showWinScreen(Player.getKills());
     return;
   }
@@ -116,98 +136,100 @@ function gameLoop() {
 }
 
 // ── Start Game ────────────────────────────────
+let loadingActive = false;
+
 async function startGame() {
+  if(loadingActive) return;          // ignore double-clicks on PLAY
+  loadingActive = true;
+
   document.getElementById('mainMenu').style.display    = 'none';
   document.getElementById('loadingScreen').style.display = 'flex';
 
-  // Safety: hide loading screen after 10 s no matter what
-  const safetyTimer = setTimeout(() => {
-    console.warn('[Main] Safety timeout fired – forcing game start');
-    document.getElementById('loadingScreen').style.display = 'none';
-    if(!gameRunning) launchGame();
+  let loadFinished = false;
+  const core = { player:false, hud:false };
+  let safetyTimer = null;
+
+  // Safety net: never leave the player stuck on the loading screen.
+  safetyTimer = setTimeout(() => {
+    if(loadFinished) return;
+    console.warn('[Main] Loading took longer than 10s – starting with whatever is ready');
+    finishLoading();
   }, 10000);
 
+  // Isolate every step so one failure is logged by name but never freezes
+  // the rest of the loading sequence.
+  async function runStep(label, pct, message, fn) {
+    if(loadFinished) return null;
+    setLoading(pct, message);
+    await tick();
+    try {
+      const result = await fn();
+      console.log(`[Main] ${label} OK`);
+      return result;
+    } catch(e) {
+      console.error(`[Main] ${label} FAILED:`, e);
+      return null;
+    }
+  }
+
+  function finishLoading() {
+    if(loadFinished) return;
+    loadFinished = true;
+    clearTimeout(safetyTimer);
+
+    // The 10s fallback can fire before Player/HUD init completed. Make sure
+    // the match is still playable rather than half-initialized.
+    try {
+      if(!core.player) { Player.init(scene); core.player = true; }
+      if(!core.hud) {
+        UI.showHUD();
+        refreshHud();
+        core.hud = true;
+      }
+    } catch(e) {
+      console.error('[Main] Fallback system init FAILED:', e);
+    }
+
+    const loadingScreen = document.getElementById('loadingScreen');
+    if(loadingScreen) loadingScreen.style.display = 'none';
+    loadingActive = false;
+    launchGame();
+  }
+
   try {
-    // ── Step 1: Map ──────────────────────────────────────────────
-    setLoading(5, 'BUILDING MAP...');
-    await tick();
-    try {
-      GameMap.build(scene);
-      console.log('[Main] Map built OK');
-    } catch(e) {
-      console.error('[Main] Map build FAILED:', e);
-    }
+    await runStep('Map', 5, 'BUILDING MAP...', () => GameMap.build(scene));
+    await runStep('Loot', 25, 'SPAWNING LOOT...', () => Loot.populate(scene));
+    await runStep('Weapons', 40, 'INITIALIZING WEAPONS...', () => Weapons.initTracers(scene));
 
-    // ── Step 2: Loot ─────────────────────────────────────────────
-    setLoading(25, 'SPAWNING LOOT...');
-    await tick();
-    try {
-      Loot.populate(scene);
-      console.log('[Main] Loot populated OK');
-    } catch(e) {
-      console.error('[Main] Loot populate FAILED:', e);
-    }
-
-    // ── Step 3: Weapon tracers ────────────────────────────────────
-    setLoading(40, 'INITIALIZING WEAPONS...');
-    await tick();
-    try {
-      Weapons.initTracers(scene);
-      console.log('[Main] Weapon tracers OK');
-    } catch(e) {
-      console.error('[Main] Weapons init FAILED:', e);
-    }
-
-    // ── Step 4: Bots (async batched, 5 per frame) ─────────────────
-    setLoading(50, 'SPAWNING BOTS... (0 / ' + C.BOT_COUNT + ')');
-    await tick();
-    try {
-      await Bots.spawnAll(scene, (done, total) => {
+    await runStep('Bots', 50, `SPAWNING BOTS... (0 / ${C.BOT_COUNT})`, () =>
+      Bots.spawnAll(scene, (done, total) => {
         const pct = 50 + Math.round((done / total) * 25);
-        setLoading(pct, 'SPAWNING BOTS... (' + done + ' / ' + total + ')');
-      });
-      console.log('[Main] Bots spawned OK:', Bots.getAll().length);
-    } catch(e) {
-      console.error('[Main] Bot spawn FAILED:', e);
-    }
+        setLoading(pct, `SPAWNING BOTS... (${done} / ${total})`);
+      })
+    );
 
-    // ── Step 5: Player / Zone / Audio / Mobile ────────────────────
-    setLoading(78, 'SETTING UP PLAYER...');
-    await tick();
-    try {
+    await runStep('Player', 78, 'SETTING UP PLAYER...', () => {
       Player.init(scene);
-      console.log('[Main] Player init OK');
-    } catch(e) {
-      console.error('[Main] Player init FAILED:', e);
-    }
+      core.player = true;
+    });
+    await runStep('Zone', 80, 'INITIALIZING ZONE...', () => Zone.init(scene));
+    await runStep('Audio', 82, 'INITIALIZING AUDIO...', () => Audio.init());
+    await runStep('Mobile', 85, 'INITIALIZING CONTROLS...', () => Mobile.init());
 
-    try { Zone.init(scene);  } catch(e) { console.error('[Main] Zone init FAILED:', e); }
-    try { Audio.init();      } catch(e) { console.error('[Main] Audio init FAILED:', e); }
-    try { Mobile.init();     } catch(e) { console.error('[Main] Mobile init FAILED:', e); }
-
-    // ── Step 6: HUD ───────────────────────────────────────────────
-    setLoading(90, 'BUILDING HUD...');
-    await tick();
-    try {
+    await runStep('HUD', 90, 'BUILDING HUD...', () => {
       UI.showHUD();
-      UI.updateStatusBars(100, 0);
-      UI.updateAlive(C.BOT_COUNT + 1);
-      console.log('[Main] HUD OK');
-    } catch(e) {
-      console.error('[Main] HUD FAILED:', e);
-    }
+      refreshHud();
+      core.hud = true;
+    });
 
     setLoading(100, 'READY!');
     await delay(250);
-
-  } catch(outerErr) {
-    console.error('[Main] Unexpected error during loading:', outerErr);
+  } catch(e) {
+    console.error('[Main] Unexpected error during loading:', e);
+  } finally {
+    // Always remove the loading screen and start, even if a step failed.
+    finishLoading();
   }
-
-  // Always clear the loading screen and start
-  clearTimeout(safetyTimer);
-  document.getElementById('loadingScreen').style.display = 'none';
-  launchGame();
 }
 
 // ── Separated launch so the safety timer can call it too ─────────
@@ -220,6 +242,7 @@ function launchGame() {
 
   gameRunning = true;
   matchStartTime = performance.now();
+  UI.setMatchStartTime(matchStartTime);
   clock.start();
 
   try { Audio.startAmbient(); } catch(e) {}
@@ -242,6 +265,9 @@ function resetGame() {
   Bots.reset();
   Loot.reset();
   GameMap.reset();
+  Weapons.reset();
+  Zone.reset();
+  Audio.stopAmbient();
 
   document.getElementById('gameOverScreen').style.display='none';
   document.getElementById('winScreen').style.display='none';
@@ -256,7 +282,23 @@ function resetGame() {
 }
 
 // ── Helpers ───────────────────────────────────
-function tick() { return new Promise(r => requestAnimationFrame(r)); }
+// rAF paces the loading bar with rendering; the timer guarantees the promise
+// resolves even when rAF is throttled/stopped (background tab, slow GPU).
+function tick() {
+  return new Promise(resolve => {
+    let done = false;
+    let timer = null;
+    const finish = () => {
+      if(done) return;
+      done = true;
+      if(timer !== null) clearTimeout(timer);
+      resolve();
+    };
+    timer = setTimeout(finish, 100);
+    if(typeof requestAnimationFrame === 'function') requestAnimationFrame(finish);
+    else finish();
+  });
+}
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── Menu buttons ──────────────────────────────

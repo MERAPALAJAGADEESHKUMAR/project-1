@@ -21,7 +21,7 @@ const Mobile = (() => {
   }
 
   function init() {
-    if(!isMobile()) return;
+    if(active || !isMobile()) return; // never register touch listeners twice
     active = true;
     document.getElementById('mobileControls').style.display='block';
 
